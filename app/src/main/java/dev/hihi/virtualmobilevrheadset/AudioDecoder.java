@@ -13,15 +13,18 @@ public class AudioDecoder {
     private static final String TAG = "AudioDecoder";
     private static final boolean DEBUG = true;
 
+    private static final int DEBUG_MESSAGE_INTERVAL_MS = 1000;
+    private static long mLastDebugMessageTime = 0;
+
     private static final int SAMPLE_RATE = 44100; // Hz
     private static final int ENCODING = AudioFormat.ENCODING_PCM_16BIT;
     private static final int CHANNEL_MASK = AudioFormat.CHANNEL_IN_STEREO;
 
-    private boolean isRunning = false;
+    private boolean mIsRunning = false;
     private CountDownLatch mStoppingLock = new CountDownLatch(1);
 
     public void startDecoder(final MirrorClientInterface client) {
-        isRunning = true;
+        mIsRunning = true;
         // Better threading?
         new Thread(new Runnable() {
             @Override
@@ -50,7 +53,7 @@ public class AudioDecoder {
                     audioTrack.play();
                     Log.i(TAG, "Audio streaming started");
 
-                    while (isRunning) {
+                    while (mIsRunning) {
                         Packet packet = client.getNextPacket();
                         // TODO: No busy waiting
                         if (packet == null) {
@@ -58,14 +61,15 @@ public class AudioDecoder {
                             continue;
                         }
                         audioTrack.write(packet.bytes, 0, packet.size, AudioTrack.WRITE_BLOCKING);
-                        if (DEBUG) {
+                        if (DEBUG && (SystemClock.uptimeMillis() - mLastDebugMessageTime) > DEBUG_MESSAGE_INTERVAL_MS) {
+                            mLastDebugMessageTime = SystemClock.uptimeMillis();
                             Log.v(TAG, "Wrote size:" + packet.size);
                         }
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 } finally {
-                    isRunning = false;
+                    mIsRunning = false;
                     mStoppingLock.countDown();
                 }
             }
@@ -73,11 +77,11 @@ public class AudioDecoder {
     }
 
     public void stop() {
-        isRunning = false;
+        mIsRunning = false;
     }
 
     public boolean isRunning() {
-        return isRunning;
+        return mIsRunning;
     }
 
     public void waitUntilStopped() {

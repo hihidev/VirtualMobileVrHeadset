@@ -1,13 +1,10 @@
 package dev.hihi.virtualmobilevrheadset;
 
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.io.BufferedInputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -15,39 +12,38 @@ import java.util.concurrent.CountDownLatch;
 
 public class TcpClient implements MirrorClientInterface {
 
-    private static final String TAG = "TcpClient";
     private static final boolean DEBUG = true;
+    private static final int DEBUG_MESSAGE_INTERVAL_MS = 1000;
+    private static long mLastDebugMessageTime = 0;
 
-    private boolean isConnected = false;
-    private boolean isRunning = false;
+    private boolean mIsConnected = false;
+    private boolean mIsRunning = false;
 
     private CountDownLatch mStoppingLock = new CountDownLatch(1);
 
     private Queue<Packet> mPendingPacketQueue = new ConcurrentLinkedQueue<>();
 
     @Override
-    public void start(final String ip, final int port) {
-        isRunning = true;
+    public void start(final String debugTag, final String ip, final int port) {
+        mIsRunning = true;
         // Better way to handling threading?
         new Thread() {
             public void run() {
-                Log.i(TAG, "Starting tcp client");
+                Log.i(debugTag, "Starting tcp client");
 
 
                 try (Socket clientSocket = new Socket(ip, port);
                      InputStream is = new BufferedInputStream(clientSocket.getInputStream())) {
-                    Log.i(TAG, "Connected tcp client");
+                    Log.i(debugTag, "Connected tcp client");
 
                     byte[] header = new byte[4];
 
-                    Log.i(TAG, "isRunning: " + isRunning);
-                    while (isRunning) {
+                    Log.i(debugTag, "isRunning: " + mIsRunning);
+                    while (mIsRunning) {
                         int headerRemain = 4;
                         int headerOffset = 0;
                         while (headerRemain != 0) {
-                            Log.i(TAG, "wait read: " + isRunning);
                             int size = is.read(header, headerOffset, headerRemain);
-                            Log.i(TAG, "size: " + size);
                             if (size > 0) {
                                 headerOffset += size;
                                 headerRemain = headerRemain - size;
@@ -59,9 +55,6 @@ public class TcpClient implements MirrorClientInterface {
                                 (((header[0] & 0xff) << 24) | ((header[1] & 0xff) << 16) |
                                         ((header[2] & 0xff) << 8) | (header[3] & 0xff));
                         int nextPacketOffset = 0;
-                        if (DEBUG) {
-                            Log.v(TAG, "nextPacketSize: " + nextPacketSize);
-                        }
 
                         byte[] buffer = new byte[nextPacketSize];
                         while(nextPacketSize != 0) {
@@ -74,12 +67,16 @@ public class TcpClient implements MirrorClientInterface {
                             }
                         }
                         mPendingPacketQueue.add(new Packet(buffer, nextPacketOffset));
+                        if (DEBUG && (SystemClock.uptimeMillis() - mLastDebugMessageTime) > DEBUG_MESSAGE_INTERVAL_MS) {
+                            mLastDebugMessageTime = SystemClock.uptimeMillis();
+                            Log.v(debugTag, "receive packet size:" + nextPacketOffset);
+                        }
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 } finally {
-                    Log.v(TAG, "Stopping");
-                    isRunning = false;
+                    Log.v(debugTag, "Stopping");
+                    mIsRunning = false;
                     mStoppingLock.countDown();
                 }
             }
@@ -88,13 +85,12 @@ public class TcpClient implements MirrorClientInterface {
 
     @Override
     public void stop() {
-        Log.i(TAG, "Stopping server");
-        isRunning = false;
+        mIsRunning = false;
     }
 
     @Override
     public boolean isConnected() {
-        return isConnected;
+        return mIsConnected;
     }
 
     @Override
@@ -114,7 +110,7 @@ public class TcpClient implements MirrorClientInterface {
     }
 
     @Override
-    public int pendingPacketSize() {
+    public int packetQueueSize() {
         return mPendingPacketQueue.size();
     }
 }
