@@ -24,6 +24,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     private final static int AUDIO_PORT = 1235;
     private final static int VIDEO_PORT = 1234;
+    private final static int COMMAND_PORT = 1236;
 
     private boolean mIsRunning = false;
 
@@ -32,8 +33,9 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     private MirrorClientInterface mAudioClient = null;
     private MirrorClientInterface mVideoClient = null;
+    private MirrorClientInterface mCommandClient = null;
 
-    private TextureView mTextureView;
+    private MyTextureView mTextureView;
     private ViewGroup mServerInfoLayout;
 
     @Override
@@ -45,7 +47,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         setContentView(R.layout.activity_main);
-        mTextureView = (TextureView) findViewById(R.id.textureView);
+        mTextureView = (MyTextureView) findViewById(R.id.textureView);
         mTextureView.setSurfaceTextureListener(this);
         mServerInfoLayout = findViewById(R.id.server_info_layout);
 
@@ -95,7 +97,8 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         mIsRunning = true;
         updateUI();
         startAudioMirror(ip);
-        startVideoMirror(ip, findViewById(R.id.textureView), new Surface(surfaceTexture));
+        startVideoMirror(ip, (MyTextureView) findViewById(R.id.textureView), new Surface(surfaceTexture));
+        startCommandClient(ip);
     }
 
     private void updateUI() {
@@ -142,7 +145,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             public void run() {
                 while (mIsRunning) {
                     mAudioClient = new TcpClient();
-                    mAudioClient.start("AudioClient", ip, AUDIO_PORT);
+                    mAudioClient.start("AudioClient", ip, AUDIO_PORT, true);
                     mAudioDecoder = new AudioDecoder();
                     mAudioDecoder.startDecoder(mAudioClient);
                     mAudioClient.waitUntilStopped();
@@ -158,12 +161,12 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         }.start();
     }
 
-    public void startVideoMirror(final String ip, final View view, final Surface surface) {
+    public void startVideoMirror(final String ip, final MyTextureView view, final Surface surface) {
         new Thread() {
             public void run() {
                 while (mIsRunning) {
                     mVideoClient = new TcpClient();
-                    mVideoClient.start("VideoClient", ip, VIDEO_PORT);
+                    mVideoClient.start("VideoClient", ip, VIDEO_PORT, true);
                     mVideoDecoder = new VideoDecoder();
                     mVideoDecoder.startDecoder(getWindowManager(), view, surface, mVideoClient);
                     mVideoClient.waitUntilStopped();
@@ -174,6 +177,20 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
                     Log.i(TAG, "TCP client stopped");
                     mVideoDecoder = null;
                     mVideoClient = null;
+                }
+            }
+        }.start();
+    }
+
+    public void startCommandClient(final String ip) {
+        new Thread() {
+            public void run() {
+                while (mIsRunning) {
+                    mCommandClient = new TcpClient();
+                    mTextureView.attachCommandClient(mCommandClient);
+                    mCommandClient.start("CommandClient", ip, COMMAND_PORT, false);
+                    mCommandClient.waitUntilStopped();
+                    mTextureView.removeCommandClient();
                 }
             }
         }.start();

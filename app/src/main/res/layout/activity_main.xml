@@ -33,7 +33,7 @@
             android:id="@+id/server_ip"
             android:hint="Server IP"/>
     </RelativeLayout>
-    <TextureView
+    <dev.hihi.virtualmobilevrheadset.MyTextureView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:id="@+id/textureView"

@@ -27,7 +27,7 @@ public class VideoDecoder {
     private CountDownLatch mCountDownLatch = new CountDownLatch(2);
 
 
-    public void startDecoder(final WindowManager windowManager, final View view,
+    public void startDecoder(final WindowManager windowManager, final MyTextureView view,
             final Surface surface, final MirrorClientInterface client) {
         mIsStopped = false;
         MediaCodec decoderReal;
@@ -65,6 +65,10 @@ public class VideoDecoder {
                     // TODO: No busy waiting
                     while ((packet = client.getNextPacket()) == null && !mIsStopped) {
                         SystemClock.sleep(1);
+                    }
+                    if (mIsStopped) {
+                        mCountDownLatch.countDown();
+                        return;
                     }
 
                     try {
@@ -144,7 +148,7 @@ public class VideoDecoder {
         return result;
     }
 
-    private void updateSurfaceSize(WindowManager windowManager, final View view) {
+    private void updateSurfaceSize(WindowManager windowManager, final MyTextureView view) {
         DisplayMetrics displayMetrics = new DisplayMetrics();
         windowManager.getDefaultDisplay().getMetrics(displayMetrics);
         float screenProportion = (float) displayMetrics.widthPixels / (float) displayMetrics.heightPixels;
@@ -166,6 +170,7 @@ public class VideoDecoder {
                 view.setLayoutParams(lp);
             }
         });
+        view.setVideoSourceSize(mWidth, mHeight);
     }
 
     public void stop() {
