@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:layout_gravity="center"
     android:gravity="center"
-    tools:context=".MainActivity">
+    tools:context=".PhoneActivity">
 
     <!--    <SurfaceView android:id="@+id/surface"-->
     <!--        android:layout_width="wrap_content"-->

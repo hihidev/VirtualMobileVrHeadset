@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.hihi.virtualmobilevrheadset">
 
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
@@ -12,6 +13,7 @@
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:theme="@style/AppTheme">
+        <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
         <activity android:name=".MainActivity"
             android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
             android:theme="@android:style/Theme.Black.NoTitleBar">
@@ -20,6 +22,19 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+        <activity android:name=".PhoneActivity"
+            android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
+            android:theme="@android:style/Theme.Black.NoTitleBar">
+        </activity>
+        <activity android:name=".VrActivity"
+            android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
+            android:theme="@android:style/Theme.Black.NoTitleBar">
+            <meta-data android:name="android.app.lib_name" android:value="vrcinema" />
+
+            <!-- Indicate the activity is aware of VrApi focus states required for system overlays  -->
+            <meta-data android:name="com.oculus.vr.focusaware" android:value="true"/>
+
         </activity>
     </application>
 

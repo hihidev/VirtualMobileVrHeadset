@@ -84,3 +84,5 @@ lint/generated/
 lint/outputs/
 lint/tmp/
 # lint/reports/
+
+ovr_sdk/
