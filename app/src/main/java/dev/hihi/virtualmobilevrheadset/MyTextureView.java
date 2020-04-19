@@ -6,7 +6,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.TextureView;
 
-public class MyTextureView extends TextureView {
+public class MyTextureView extends TextureView implements MirrorEngine.TouchSurfaceInterface {
 
     private static final String TAG = "MyTextureView";
 
@@ -26,6 +26,7 @@ public class MyTextureView extends TextureView {
 
     private int mVideoSourceWidth = 0;
     private int mVideoSourceHeight = 0;
+    private boolean mIsRotated = false;
 
     public MyTextureView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
@@ -43,17 +44,20 @@ public class MyTextureView extends TextureView {
         super(context);
     }
 
+    @Override
     public void attachCommandClient(MirrorClientInterface client) {
         mClient = client;
     }
 
+    @Override
     public void removeCommandClient() {
         mClient = null;
     }
 
-    public void setVideoSourceSize(int width, int height) {
+    public void setVideoSourceSize(int width, int height, boolean isRotated) {
         mVideoSourceWidth = width;
         mVideoSourceHeight = height;
+        mIsRotated = isRotated;
     }
 
     @Override
@@ -81,17 +85,22 @@ public class MyTextureView extends TextureView {
                 Log.w(TAG, "Unkonwn event action: " + event.getAction());
                 return super.dispatchTouchEvent(event);
         }
-        float x = event.getX();
-        float y = event.getY();
-        float viewWidth = getWidth();
-        float viewHeight = getHeight();
+        float viewWidth = mIsRotated ? getHeight() : getWidth();
+        float viewHeight = mIsRotated ? getWidth() : getHeight();
+
+        float x = mIsRotated ? event.getY() : event.getX();
+        float y = mIsRotated ? viewHeight - event.getX() : event.getY();
+
         x = Math.min(x, viewWidth);
         x = Math.max(x, 0);
         y = Math.min(y, viewHeight);
         y = Math.max(y, 0);
 
-        int realX = (int) (x * mVideoSourceWidth / viewWidth);
-        int realY = (int) (y * mVideoSourceHeight / viewHeight);
+        float videoWidth = mIsRotated ? mVideoSourceHeight : mVideoSourceWidth;
+        float videoHeight = mIsRotated ? mVideoSourceWidth : mVideoSourceHeight;
+
+        int realX = (int) (x * videoWidth / viewWidth);
+        int realY = (int) (y * videoHeight / viewHeight);
 
         byte[] bytes = new byte[6];
         bytes[0] = COMMAND.GESTURE;

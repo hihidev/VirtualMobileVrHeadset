@@ -63,19 +63,6 @@ jobject Java_dev_hihi_virtualmobilevrheadset_VrActivity_nativePrepareNewVideo(
     return surfaceTexture;
 }
 
-void Java_dev_hihi_virtualmobilevrheadset_VrActivity_nativeVideoCompletion(
-    JNIEnv* jni,
-    jclass clazz,
-    jlong interfacePtr) {
-    ALOG("nativeVideoCompletion %p", interfacePtr);
-    VrCinema* cinema = appPtr;
-    if (cinema && interfacePtr) {
-        cinema->VideoEnded();
-    } else {
-        ALOG("nativeVideoCompletion %p NULL ptr", cinema);
-    }
-}
-
 } // extern "C"
 
 //==============================================================

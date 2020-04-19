@@ -3,7 +3,7 @@ package dev.hihi.virtualmobilevrheadset;
 import java.net.InetSocketAddress;
 
 public interface MirrorClientInterface {
-    void start(String debugTag, String ip, int port, boolean receiveMode);
+    void start(String ip, int port, Runnable stoppedCallback, boolean receiveMode);
     void stop();
     boolean isConnected();
     void waitUntilStopped();

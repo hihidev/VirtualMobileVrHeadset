@@ -403,35 +403,6 @@ bool VrCinema::AppInit(const OVRFW::ovrAppContext* appContext) {
     FadedScreenMaskSquareDef.graphicsCommand.GpuState.colorMaskEnable[2] = false;
     FadedScreenMaskSquareDef.graphicsCommand.GpuState.colorMaskEnable[3] = true;
 
-    /// Load movie file
-    std::string movieFileName = "Oculus/Movies/Trailers/HenryShort.mp4";
-    /// Check launch intents for file override
-    std::string intentFromPackage, intentJSON, intentURI;
-    GetIntentStrings(intentFromPackage, intentJSON, intentURI);
-    ALOGV("AppInit - intent = `%s`", intentURI.c_str());
-    /// Find movie file
-    if (intentURI.length() > 0) {
-        movieFileName = intentURI;
-    }
-    std::vector<std::string> SearchPaths;
-    OVRFW::ovrFileSys::PushBackSearchPathIfValid(
-        ctx, OVRFW::EST_SECONDARY_EXTERNAL_STORAGE, OVRFW::EFT_ROOT, "", SearchPaths);
-    OVRFW::ovrFileSys::PushBackSearchPathIfValid(
-        ctx, OVRFW::EST_PRIMARY_EXTERNAL_STORAGE, OVRFW::EFT_ROOT, "", SearchPaths);
-    for (const auto& searchPath : SearchPaths) {
-        std::string moviePath = std::string("file://") + searchPath + movieFileName;
-        ALOGV("AppInit - testing for movie at '%s'", moviePath.c_str());
-        if (FileSys && FileSys->FileExists(moviePath.c_str())) {
-            ALOGV("AppInit - FOUND movie at '%s'", moviePath.c_str());
-            movieFileName = searchPath + movieFileName;
-            break;
-        }
-    }
-    ALOGV("AppInit - loading movie = `%s`", movieFileName.c_str());
-
-    /// Save this
-    VideoName = movieFileName;
-
     /// For movie players, best to set the display to 60fps if available
     {
         // Query supported frame rates
@@ -457,7 +428,7 @@ bool VrCinema::AppInit(const OVRFW::ovrAppContext* appContext) {
     }
 
     /// Start movie on Java side
-    StartVideo();
+    StartStreaming();
 
     /// All done
     ALOGV("AppInit - exit");
@@ -502,13 +473,14 @@ void VrCinema::AppShutdown(const OVRFW::ovrAppContext*) {
 void VrCinema::AppResumed(const OVRFW::ovrAppContext* /* context */) {
     ALOGV("VrCinema::AppResumed");
     RenderState = RENDER_STATE_RUNNING;
-    ResumeVideo();
+    ResumeStreaming();
 }
 
 void VrCinema::AppPaused(const OVRFW::ovrAppContext* /* context */) {
     ALOGV("VrCinema::AppPaused");
     if (RenderState == RENDER_STATE_RUNNING) {
-        PauseVideo();
+        ALOGV("RICKYXXX Pause 1");
+        StopStreaming();
     }
 }
 
@@ -523,19 +495,21 @@ OVRFW::ovrApplFrameOut VrCinema::AppFrame(const OVRFW::ovrApplFrameIn& vrFrame) 
     /// Simple Play/Pause toggle
     if (vrFrame.Clicked(ovrButton_A) || vrFrame.Clicked(ovrButton_Trigger)) {
         if (IsPaused) {
-            ResumeVideo();
+            ResumeStreaming();
         } else {
-            PauseVideo();
+            ALOGV("RICKYXXX Pause 2");
+            StopStreaming();
         }
     }
 
     // Check for mount/unmount
     if (vrFrame.HeadsetUnMounted()) {
         WasPausedOnUnMount = IsPaused;
-        PauseVideo();
+        ALOGV("RICKYXXX Pause 3");
+        StopStreaming();
     }
     if (vrFrame.HeadsetMounted() && false == WasPausedOnUnMount) {
-        ResumeVideo();
+        ResumeStreaming();
     }
 
     return OVRFW::ovrApplFrameOut();
@@ -549,13 +523,14 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
         case RENDER_STATE_RUNNING: {
             // latch the latest movie frame to the texture.
             if (MovieTexture != nullptr && CurrentMovieWidth != 0) {
+                ALOG("VrCinema:: MovieTexture 526");
                 glActiveTexture(GL_TEXTURE0);
                 MovieTexture->Update();
                 glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
-                if (MovieTexture->GetNanoTimeStamp() != MovieTextureTimestamp) {
+                //if (MovieTexture->GetNanoTimeStamp() != MovieTextureTimestamp) {
                     MovieTextureTimestamp = MovieTexture->GetNanoTimeStamp();
                     FrameUpdateNeeded = true;
-                }
+                //}
             }
 
             CheckForbufferResize();
@@ -866,44 +841,29 @@ Matrix4f VrCinema::BoundsScreenMatrix(const Bounds3f& bounds, const float movieA
         Matrix4f::Scaling(widthScale, heightScale, 1.0f);
 }
 
-void VrCinema::VideoEnded() {
-    ALOG("VrCinema::VideoEnded");
-    /// re-start
-    StartVideo();
-}
-
-void VrCinema::StartVideo() {
+void VrCinema::StartStreaming() {
     const ovrJava& ctx = *(reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi()));
     JNIEnv* env;
     ctx.Vm->AttachCurrentThread(&env, 0);
     jobject me = ctx.ActivityObject;
     jclass acl = env->GetObjectClass(me); // class pointer of NativeActivity
-    jmethodID startMovieMethodId =
-        env->GetMethodID(acl, "startMovieFromNative", "(Ljava/lang/String;)V");
-    jstring jstrMovieName = env->NewStringUTF(VideoName.c_str());
-    env->CallVoidMethod(ctx.ActivityObject, startMovieMethodId, jstrMovieName);
-    env->DeleteLocalRef(jstrMovieName);
+    jmethodID startMovieMethodId = env->GetMethodID(acl, "startStreaming", "()V");
+    env->CallVoidMethod(ctx.ActivityObject, startMovieMethodId);
     IsPaused = false;
 }
 
-void VrCinema::PauseVideo() {
+void VrCinema::StopStreaming() {
+    ALOGV("RICKYXXX Pause 4");
     const ovrJava& ctx = *(reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi()));
     JNIEnv* env;
     ctx.Vm->AttachCurrentThread(&env, 0);
     jobject me = ctx.ActivityObject;
     jclass acl = env->GetObjectClass(me); // class pointer of NativeActivity
-    jmethodID pauseMovieMethodId = env->GetMethodID(acl, "pauseMovie", "()V");
+    jmethodID pauseMovieMethodId = env->GetMethodID(acl, "stopStreaming", "()V");
     env->CallVoidMethod(ctx.ActivityObject, pauseMovieMethodId);
     IsPaused = true;
 }
 
-void VrCinema::ResumeVideo() {
-    const ovrJava& ctx = *(reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi()));
-    JNIEnv* env;
-    ctx.Vm->AttachCurrentThread(&env, 0);
-    jobject me = ctx.ActivityObject;
-    jclass acl = env->GetObjectClass(me); // class pointer of NativeActivity
-    jmethodID resumeMovieMethodId = env->GetMethodID(acl, "resumeMovie", "()V");
-    env->CallVoidMethod(ctx.ActivityObject, resumeMovieMethodId);
-    IsPaused = false;
+void VrCinema::ResumeStreaming() {
+    StartStreaming();
 }

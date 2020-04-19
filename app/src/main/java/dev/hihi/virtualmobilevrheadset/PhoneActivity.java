@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.graphics.SurfaceTexture;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Surface;
 import android.view.TextureView;
@@ -19,24 +20,13 @@ import android.widget.EditText;
 public class PhoneActivity extends Activity implements TextureView.SurfaceTextureListener {
 
     private static final String TAG = "MainActivity";
-    private static final String SP_NAME = "settings";
-    private static final String LAST_IP = "last_ip";
-
-    private final static int AUDIO_PORT = 1235;
-    private final static int VIDEO_PORT = 1234;
-    private final static int COMMAND_PORT = 1236;
-
-    private boolean mIsRunning = false;
-
-    private AudioDecoder mAudioDecoder = null;
-    private VideoDecoder mVideoDecoder = null;
-
-    private MirrorClientInterface mAudioClient = null;
-    private MirrorClientInterface mVideoClient = null;
-    private MirrorClientInterface mCommandClient = null;
+    public static final String SP_NAME = "settings";
+    public static final String LAST_IP = "last_ip";
 
     private MyTextureView mTextureView;
     private ViewGroup mServerInfoLayout;
+
+    private MirrorEngine mMirrorEngine = new MirrorEngine();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,21 +45,63 @@ public class PhoneActivity extends Activity implements TextureView.SurfaceTextur
             @Override
             public void onClick(View view) {
                 Log.w(TAG, "onclick");
-                if (mIsRunning) {
-                    stopClient();
-                } else {
-                    Log.w(TAG, "onclick 2");
-                    SurfaceTexture surfaceTexture = mTextureView.getSurfaceTexture();
-                    if (surfaceTexture != null) {
-                        Log.w(TAG, "onclick 3");
-                        startClient(surfaceTexture);
+                if (mMirrorEngine != null) {
+                    boolean running = mMirrorEngine.isRunning();
+                    if (running) {
+                        mMirrorEngine.stopClient();
+                    } else {
+                        tryStartStreaming();
                     }
+                    updateUI();
                 }
             }
         });
 
         restoreLastIp();
     }
+
+    private void tryStartStreaming() {
+        String ip = ((EditText) findViewById(R.id.server_ip)).getText().toString();
+        if (TextUtils.isEmpty(ip)) {
+            return;
+        }
+        saveLastIp(ip);
+
+        SurfaceTexture surfaceTexture = mTextureView.getSurfaceTexture();
+        if (surfaceTexture == null) {
+            return;
+        }
+
+        mMirrorEngine.startClient(ip, false, mOnSizeChangeCallback, new Surface(surfaceTexture), mTextureView);
+    }
+
+    private VideoDecoder.OnSizeChangeCallback mOnSizeChangeCallback = new VideoDecoder.OnSizeChangeCallback() {
+        @Override
+        public void onChange(int width, int height, boolean isRotated) {
+            DisplayMetrics displayMetrics = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+            float screenProportion = (float) displayMetrics.widthPixels / (float) displayMetrics.heightPixels;
+
+            float videoProportion = (float) width / (float) height;
+
+            final ViewGroup.LayoutParams lp = mTextureView.getLayoutParams();
+            if (videoProportion > screenProportion) {
+                lp.width = displayMetrics.widthPixels;
+                lp.height = (int) ((float) displayMetrics.widthPixels / videoProportion);
+            } else {
+                lp.width = (int) (videoProportion * (float) displayMetrics.heightPixels);
+                lp.height = displayMetrics.heightPixels;
+            }
+
+            mTextureView.post(new Runnable() {
+                @Override
+                public void run() {
+                    mTextureView.setLayoutParams(lp);
+                }
+            });
+            mTextureView.setVideoSourceSize(width, height, isRotated);
+        }
+    };
 
     private void restoreLastIp() {
         SharedPreferences sp = getSharedPreferences(SP_NAME, Context.MODE_PRIVATE);
@@ -84,27 +116,13 @@ public class PhoneActivity extends Activity implements TextureView.SurfaceTextur
         sp.edit().putString(LAST_IP, ip).apply();
     }
 
-    private void startClient(SurfaceTexture surfaceTexture) {
-        if (mIsRunning) {
-            Log.w(TAG, "Client is already running");
-            return;
-        }
-        String ip = ((EditText) findViewById(R.id.server_ip)).getText().toString();
-        if (TextUtils.isEmpty(ip)) {
-            return;
-        }
-        saveLastIp(ip);
-        mIsRunning = true;
-        updateUI();
-        startAudioMirror(ip);
-        startVideoMirror(ip, (MyTextureView) findViewById(R.id.textureView), new Surface(surfaceTexture));
-        startCommandClient(ip);
-    }
-
     private void updateUI() {
-        Log.w(TAG, "updateUI: " + mIsRunning);
+        if (mMirrorEngine == null) {
+            return;
+        }
+        boolean running = mMirrorEngine.isRunning();
         Button button = findViewById(R.id.connect_btn);
-        if (mIsRunning) {
+        if (running) {
             button.setText("Disconnect");
             mServerInfoLayout.setVisibility(View.GONE);
             mTextureView.setVisibility(View.VISIBLE);
@@ -115,101 +133,21 @@ public class PhoneActivity extends Activity implements TextureView.SurfaceTextur
         }
     }
 
-    private void stopClient() {
-        if (!mIsRunning) {
-            Log.w(TAG, "Client is not running");
-            return;
-        }
-        mIsRunning = false;
-        updateUI();
-        AudioDecoder audioDecoder = mAudioDecoder;
-        if (audioDecoder != null) {
-            audioDecoder.stop();
-        }
-        MirrorClientInterface audioClient = mAudioClient;
-        if (audioClient != null) {
-            audioClient.stop();
-        }
-        VideoDecoder videoDecoder = mVideoDecoder;
-        if (videoDecoder != null) {
-            videoDecoder.stop();
-        }
-        MirrorClientInterface videoClient = mVideoClient;
-        if (videoClient != null) {
-            videoClient.stop();
-        }
-    }
-
-    private void startAudioMirror(final String ip) {
-        new Thread() {
-            public void run() {
-                while (mIsRunning) {
-                    mAudioClient = new TcpClient();
-                    mAudioClient.start("AudioClient", ip, AUDIO_PORT, true);
-                    mAudioDecoder = new AudioDecoder();
-                    mAudioDecoder.startDecoder(mAudioClient);
-                    mAudioClient.waitUntilStopped();
-                    mAudioClient.stop();
-                    mAudioDecoder.stop();
-                    Log.i(TAG, "Audio client stopped, waiting audio decoder to stop");
-                    mAudioDecoder.waitUntilStopped();
-                    Log.i(TAG, "Audio decoder stopped");
-                    mAudioClient = null;
-                    mAudioDecoder = null;
-                }
-            }
-        }.start();
-    }
-
-    public void startVideoMirror(final String ip, final MyTextureView view, final Surface surface) {
-        new Thread() {
-            public void run() {
-                while (mIsRunning) {
-                    mVideoClient = new TcpClient();
-                    mVideoClient.start("VideoClient", ip, VIDEO_PORT, true);
-                    mVideoDecoder = new VideoDecoder();
-                    mVideoDecoder.startDecoder(getWindowManager(), view, surface, mVideoClient);
-                    mVideoClient.waitUntilStopped();
-                    Log.i(TAG, "Video client stopped, waiting video decoder to stop");
-                    mVideoClient.stop();
-                    mVideoDecoder.stop();
-                    mVideoDecoder.waitUntilStopped();
-                    Log.i(TAG, "TCP client stopped");
-                    mVideoDecoder = null;
-                    mVideoClient = null;
-                }
-            }
-        }.start();
-    }
-
-    public void startCommandClient(final String ip) {
-        new Thread() {
-            public void run() {
-                while (mIsRunning) {
-                    mCommandClient = new TcpClient();
-                    mTextureView.attachCommandClient(mCommandClient);
-                    mCommandClient.start("CommandClient", ip, COMMAND_PORT, false);
-                    mCommandClient.waitUntilStopped();
-                    mTextureView.removeCommandClient();
-                }
-            }
-        }.start();
-    }
-
     @Override
     public void onResume() {
         super.onResume();
-        SurfaceTexture surfaceTexture = mTextureView.getSurfaceTexture();
-        if (surfaceTexture != null) {
-            startClient(surfaceTexture);
-        }
         updateUI();
+        if (mMirrorEngine != null) {
+            tryStartStreaming();
+        }
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        stopClient();
+        if (mMirrorEngine != null) {
+            mMirrorEngine.stopClient();
+        }
     }
 
     @Override

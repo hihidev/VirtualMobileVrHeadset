@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="dev.hihi.virtualmobilevrheadset">
 
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -13,7 +14,7 @@
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:theme="@style/AppTheme">
-        <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
+        <meta-data android:name="com.samsung.android.vr.application.mode" android:value="dual"/>
         <activity android:name=".MainActivity"
             android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
             android:theme="@android:style/Theme.Black.NoTitleBar">
@@ -24,12 +25,16 @@
             </intent-filter>
         </activity>
         <activity android:name=".PhoneActivity"
+            android:screenOrientation="portrait"
             android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
-            android:theme="@android:style/Theme.Black.NoTitleBar">
+            android:theme="@android:style/Theme.Black.NoTitleBar"
+            tools:ignore="LockedOrientationActivity">
         </activity>
         <activity android:name=".VrActivity"
+            android:screenOrientation="landscape"
             android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
-            android:theme="@android:style/Theme.Black.NoTitleBar">
+            android:theme="@android:style/Theme.Black.NoTitleBar"
+            tools:ignore="LockedOrientationActivity">
             <meta-data android:name="android.app.lib_name" android:value="vrcinema" />
 
             <!-- Indicate the activity is aware of VrApi focus states required for system overlays  -->

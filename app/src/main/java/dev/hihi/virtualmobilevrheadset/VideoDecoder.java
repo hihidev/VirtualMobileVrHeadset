@@ -4,12 +4,8 @@ import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.os.SystemClock;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Surface;
-import android.view.View;
-import android.view.ViewGroup;
-import android.view.WindowManager;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -23,12 +19,17 @@ public class VideoDecoder {
 
     private int mWidth = 0;
     private int mHeight = 0;
+    private boolean mIsRotated = false;
+
     private boolean mIsStopped = false;
     private CountDownLatch mCountDownLatch = new CountDownLatch(2);
 
+    public interface OnSizeChangeCallback {
+        void onChange(int width, int height, boolean isRotated);
+    }
 
-    public void startDecoder(final WindowManager windowManager, final MyTextureView view,
-            final Surface surface, final MirrorClientInterface client) {
+    public void startDecoder(final OnSizeChangeCallback onSizeChangeCallback,
+            final Surface surface, final boolean isLandscapeScreen, final MirrorClientInterface client) {
         mIsStopped = false;
         MediaCodec decoderReal;
         try {
@@ -72,8 +73,8 @@ public class VideoDecoder {
                     }
 
                     try {
-                        decoder.configure(createFormat(packet), surface, null, 0);
-                        updateSurfaceSize(windowManager, view);
+                        decoder.configure(createFormat(packet, isLandscapeScreen), surface, null, 0);
+                        onSizeChangeCallback.onChange(mWidth, mHeight, mIsRotated);
                         decoder.start();
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -136,41 +137,29 @@ public class VideoDecoder {
         }
     }
 
-    private MediaFormat createFormat(Packet configPacket) {
-        mWidth = (configPacket.bytes[0] & 0xff) * 256  + (configPacket.bytes[1] & 0xff);
-        mHeight = (configPacket.bytes[2] & 0xff) * 256 + (configPacket.bytes[3] & 0xff);
+    private MediaFormat createFormat(Packet configPacket, boolean isLandscapeScreen) {
+        int width = (configPacket.bytes[0] & 0xff) * 256  + (configPacket.bytes[1] & 0xff);
+        int height = (configPacket.bytes[2] & 0xff) * 256 + (configPacket.bytes[3] & 0xff);
 
-        Log.i(TAG, "createFormat with width: " + mWidth + ", height: " + mHeight + ", mime_type: " + MIME_TYPE);
+        Log.i(TAG, "createFormat with width: " + width + ", height: " + height + ", mime_type: " + MIME_TYPE);
 
-        MediaFormat result = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
+        MediaFormat result = MediaFormat.createVideoFormat(MIME_TYPE, width, height);
         result.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         // result.setInteger("allow-frame-drop", 0);
-        return result;
-    }
 
-    private void updateSurfaceSize(WindowManager windowManager, final MyTextureView view) {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
-        float screenProportion = (float) displayMetrics.widthPixels / (float) displayMetrics.heightPixels;
-
-        float videoProportion = (float) mWidth / (float) mHeight;
-
-        final ViewGroup.LayoutParams lp = view.getLayoutParams();
-        if (videoProportion > screenProportion) {
-            lp.width = displayMetrics.widthPixels;
-            lp.height = (int) ((float) displayMetrics.widthPixels / videoProportion);
+        boolean isLandscapeVideo = width > height;
+        if (isLandscapeScreen != isLandscapeVideo) {
+            result.setInteger(MediaFormat.KEY_ROTATION, 90);
+            mWidth = height;
+            mHeight = width;
+            mIsRotated = true;
         } else {
-            lp.width = (int) (videoProportion * (float) displayMetrics.heightPixels);
-            lp.height = displayMetrics.heightPixels;
+            mWidth = width;
+            mHeight = height;
+            mIsRotated = false;
         }
 
-        view.post(new Runnable() {
-            @Override
-            public void run() {
-                view.setLayoutParams(lp);
-            }
-        });
-        view.setVideoSourceSize(mWidth, mHeight);
+        return result;
     }
 
     public void stop() {

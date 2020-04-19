@@ -71,11 +71,11 @@ class VrCinema : public OVRFW::ovrAppl {
     AppRenderEye(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendererOutput& out, int eye) override;
     // Called when app loses focus
     virtual void AppLostFocus() override {
-        PauseVideo();
+        StopStreaming();
     }
     // Called when app re-gains focus
     virtual void AppGainedFocus() override {
-        ResumeVideo();
+        ResumeStreaming();
     }
 
     /// interop with JAVA mediaPlayer
@@ -83,12 +83,11 @@ class VrCinema : public OVRFW::ovrAppl {
     // Called from JAVA layer
     void SetVideoSize(int width, int height);
     void GetScreenSurface(jobject& surfaceTexture);
-    void VideoEnded();
 
     // Call to JAVA layer
-    void StartVideo();
-    void PauseVideo();
-    void ResumeVideo();
+    void StartStreaming();
+    void StopStreaming();
+    void ResumeStreaming();
 
    private:
     void CheckForbufferResize();
@@ -141,7 +140,6 @@ class VrCinema : public OVRFW::ovrAppl {
     OVR::Vector2i BufferSize; // rebuild if != MovieTextureWidth / Height
     bool IsPaused;
     bool WasPausedOnUnMount;
-    std::string VideoName;
 
     OVR::Vector4f LightsColor;
 };
