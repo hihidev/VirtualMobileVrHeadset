@@ -80,7 +80,7 @@ public class MirrorEngine {
                     mAudioClient = new Tcp("AudioClient", false);
                     mAudioDecoder = new AudioDecoder();
 
-                    mAudioClient.start(ip, AUDIO_PORT, null, true);
+                    mAudioClient.start(ip, AUDIO_PORT, null, null, true);
                     mAudioDecoder.startDecoder(mAudioClient);
 
                     mAudioClient.waitUntilStopped();
@@ -108,7 +108,7 @@ public class MirrorEngine {
                     mVideoClient = new Tcp("VideoClient", false);
                     mVideoDecoder = new VideoDecoder();
 
-                    mVideoClient.start(ip, VIDEO_PORT, null, true);
+                    mVideoClient.start(ip, VIDEO_PORT, null, null, true);
                     mVideoDecoder.startDecoder(onSizeChangeCallback, surface, isLandscapeScreen, mVideoClient);
 
                     mVideoClient.waitUntilStopped();
@@ -134,7 +134,7 @@ public class MirrorEngine {
                 while (mIsRunning) {
                     mCommandClient = new Tcp("CommandClient", false);
                     touchSurfaceInterface.attachCommandClient(mCommandClient);
-                    mCommandClient.start(ip, COMMAND_PORT, null, false);
+                    mCommandClient.start(ip, COMMAND_PORT, null, null, false);
 
                     mCommandClient.waitUntilStopped();
 
