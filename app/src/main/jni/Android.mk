@@ -11,10 +11,16 @@ LOCAL_C_INCLUDES 	:= 	$(LOCAL_PATH)/../../../../ovr_sdk/VrSamples/SampleFramewor
 						$(LOCAL_PATH)/../../../../ovr_sdk/1stParty/OVR/Include \
 						$(LOCAL_PATH)/../../../../ovr_sdk/1stParty/utilities/include \
 						$(LOCAL_PATH)/../../../../ovr_sdk/3rdParty/stb/src \
-
+						$(LOCAL_PATH)/../../../../ovr_sdk/VrSamples/VrInput/Src \
 
 LOCAL_SRC_FILES		:= 	main.cpp \
 					    VrCinema.cpp \
+
+LOCAL_SRC_FILES			+= 	$(LOCAL_PATH)/../../../../ovr_sdk/VrSamples/VrInput/Src/OVR_Skeleton.cpp \
+							$(LOCAL_PATH)/../../../../ovr_sdk/VrSamples/VrInput/Src/OVR_ArmModel.cpp \
+							$(LOCAL_PATH)/../../../../ovr_sdk/VrSamples/VrInput/Src/ControllerGUI.cpp \
+							$(LOCAL_PATH)/../../../../ovr_sdk/VrSamples/VrInput/Src/VrInput.cpp \
+
 
 # include default libraries
 LOCAL_LDLIBS 			:= -llog -landroid -lGLESv3 -lEGL -lz

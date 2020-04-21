@@ -21,6 +21,9 @@ Copyright   :   Copyright (c) Facebook Technologies, LLC and its affiliates. All
 #include "Render/SurfaceRender.h"
 #include "Render/SurfaceTexture.h"
 
+#include "Render/BeamRenderer.h"
+#include "VrInput.h"
+
 class VrCinema : public OVRFW::ovrAppl {
    public:
     VrCinema(
@@ -48,9 +51,19 @@ class VrCinema : public OVRFW::ovrAppl {
           MipMappedMovieTextureSwapChainLength(0),
           MipMappedMovieFBOs(nullptr),
           BufferSize(),
-          IsPaused(true),
-          WasPausedOnUnMount(false) {}
-    virtual ~VrCinema() {}
+          BeamAtlas(nullptr),
+          LaserPointerBeamHandle(),
+          RemoteBeamRenderer(nullptr),
+          SpriteAtlas(nullptr),
+          LaserPointerParticleHandle(),
+          ParticleSystem(nullptr),
+          LastTouchActionDownTimeMs(0),
+//          ControllerModelOculusTouchLeft(nullptr),
+//          ControllerModelOculusTouchRight(nullptr),
+          IsPaused(true)
+          //WasPausedOnUnMount(false)
+          {}
+    virtual ~VrCinema();
 
     // Called when the application initializes.
     // Must return true if the application initializes successfully.
@@ -71,11 +84,11 @@ class VrCinema : public OVRFW::ovrAppl {
     AppRenderEye(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendererOutput& out, int eye) override;
     // Called when app loses focus
     virtual void AppLostFocus() override {
-        StopStreaming();
+        // StopStreaming();
     }
     // Called when app re-gains focus
     virtual void AppGainedFocus() override {
-        ResumeStreaming();
+        // ResumeStreaming();
     }
 
     /// interop with JAVA mediaPlayer
@@ -88,11 +101,22 @@ class VrCinema : public OVRFW::ovrAppl {
     void StartStreaming();
     void StopStreaming();
     void ResumeStreaming();
+    void OnTouchScreen(int action, float x, float y);
 
    private:
     void CheckForbufferResize();
     GLuint BuildScreenVignetteTexture(const int horizontalTile) const;
     OVR::Matrix4f BoundsScreenMatrix(const OVR::Bounds3f& bounds, const float movieAspect) const;
+
+    void ResetLaserPointer();
+    int FindInputDevice(const ovrDeviceID deviceID) const;
+    void RemoveDevice(const ovrDeviceID deviceID);
+    bool IsDeviceTracked(const ovrDeviceID deviceID) const;
+
+    void EnumerateInputDevices();
+
+    void OnDeviceConnected(const ovrInputCapabilityHeader& capsHeader);
+    void OnDeviceDisconnected(ovrDeviceID const disconnectedDeviceID);
 
    private:
     bool UseSrgb;
@@ -138,8 +162,21 @@ class VrCinema : public OVRFW::ovrAppl {
     int MipMappedMovieTextureSwapChainLength;
     GLuint* MipMappedMovieFBOs;
     OVR::Vector2i BufferSize; // rebuild if != MovieTextureWidth / Height
+
+    OVRFW::ovrTextureAtlas* BeamAtlas;
+    OVRFW::ovrBeamRenderer::handle_t LaserPointerBeamHandle;
+    OVRFW::ovrBeamRenderer* RemoteBeamRenderer;
+
+    OVRFW::ovrTextureAtlas* SpriteAtlas;
+    OVRFW::ovrParticleSystem::handle_t LaserPointerParticleHandle;
+    OVRFW::ovrParticleSystem* ParticleSystem;
+    std::vector<OVRFW::ovrInputDeviceBase*> InputDevices;
+//    OVRFW::ModelFile* ControllerModelOculusTouchLeft;
+//    OVRFW::ModelFile* ControllerModelOculusTouchRight;
+    uint64_t LastTouchActionDownTimeMs;
+
     bool IsPaused;
-    bool WasPausedOnUnMount;
+    //bool WasPausedOnUnMount;
 
     OVR::Vector4f LightsColor;
 };

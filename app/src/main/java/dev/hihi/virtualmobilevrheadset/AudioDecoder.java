@@ -29,11 +29,12 @@ public class AudioDecoder {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                AudioTrack audioTrack = null;
                 try {
                     int bufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE,
                             CHANNEL_MASK,
                             ENCODING) * 2;
-                    AudioTrack audioTrack = new AudioTrack.Builder()
+                    audioTrack = new AudioTrack.Builder()
                             .setAudioAttributes(new AudioAttributes.Builder()
                                     .setUsage(AudioAttributes.USAGE_MEDIA)
                                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -70,6 +71,14 @@ public class AudioDecoder {
                     e.printStackTrace();
                 } finally {
                     mIsRunning = false;
+                    if (audioTrack != null) {
+                        try {
+                            audioTrack.stop();
+                        } catch (Exception e){}
+                        try {
+                            audioTrack.release();
+                        } catch (Exception e){}
+                    }
                     mStoppingLock.countDown();
                 }
             }

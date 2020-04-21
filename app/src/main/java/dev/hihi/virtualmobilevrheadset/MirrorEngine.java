@@ -1,10 +1,7 @@
 package dev.hihi.virtualmobilevrheadset;
 
-import android.graphics.SurfaceTexture;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.Surface;
-import android.widget.EditText;
 
 public class MirrorEngine {
 
@@ -66,6 +63,10 @@ public class MirrorEngine {
         MirrorClientInterface videoClient = mVideoClient;
         if (videoClient != null) {
             videoClient.stop();
+        }
+        MirrorClientInterface commandClient = mCommandClient;
+        if (commandClient != null) {
+            commandClient.stop();
         }
     }
 

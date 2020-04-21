@@ -212,7 +212,6 @@ public class Tcp implements MirrorClientInterface {
                         }
                         if (is.available() == 0 && !socket.isClosed() && socket.isConnected()) {
                             SystemClock.sleep(1);
-                            Log.i(mTag, "143");
                             continue;
                         }
                         int size = is.read(buffer, nextPacketOffset, nextPacketSize);

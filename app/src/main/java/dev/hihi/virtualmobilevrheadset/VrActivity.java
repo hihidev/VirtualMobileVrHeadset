@@ -60,6 +60,7 @@ public class VrActivity extends android.app.NativeActivity {
   Long appPtr = 0L;
 
   MirrorEngine mMirrorEngine = new MirrorEngine();
+  TouchCallback mTouchCallback = new TouchCallback();
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -123,7 +124,7 @@ public class VrActivity extends android.app.NativeActivity {
           Log.i(TAG, "onChange: " + width + ", " + height);
         nativeSetVideoSize(appPtr, width, height);
       }
-    }, movieSurface, null);
+    }, movieSurface, mTouchCallback);
   }
 
   // called from native code for starting movie
@@ -135,4 +136,52 @@ public class VrActivity extends android.app.NativeActivity {
     Log.d(TAG, "pauseMovie()");
     mMirrorEngine.stopClient();
   }
+
+  // called from native code
+  public void onTouchScreen(int action, float x, float y) {
+    Log.i(TAG, "onTouchScreen: " + action + ", " + x + ", " + y);
+    mTouchCallback.dispatchTouchEvent(action, x, y);
+  }
+
+  public static class TouchCallback implements MirrorEngine.TouchSurfaceInterface {
+
+    private static final String TAG = "TouchCallback";
+
+    public static class COMMAND {
+      public static final int UNKNOWN = 0;
+      public static final int GESTURE = 1;
+    }
+
+    private MirrorClientInterface mClient;
+
+    @Override
+    public void attachCommandClient(MirrorClientInterface client) {
+      mClient = client;
+    }
+
+    @Override
+    public void removeCommandClient() {
+      mClient = null;
+    }
+
+    public void dispatchTouchEvent(int action, float x, float y) {
+      final MirrorClientInterface client = mClient;
+      if (client == null) {
+        return;
+      }
+
+      int realX = (int) (x);
+      int realY = (int) (y);
+
+      byte[] bytes = new byte[6];
+      bytes[0] = COMMAND.GESTURE;
+      bytes[1] = (byte) action;
+      bytes[2] = (byte) ((realX >> 8) & 0xff);
+      bytes[3] = (byte) ((realX >> 0) & 0xff);
+      bytes[4] = (byte) ((realY >> 8) & 0xff);
+      bytes[5] = (byte) ((realY >> 0) & 0xff);
+      client.sendBuf(bytes, bytes.length);
+    }
+  }
+
 }

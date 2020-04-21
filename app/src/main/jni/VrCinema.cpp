@@ -147,6 +147,9 @@ void main()
 }
 )glsl";
 
+// Beam
+static const Vector4f LASER_COLOR(0.0f, 1.0f, 1.0f, 1.0f);
+
 static OVRFW::GlGeometry BuildFadedScreenMask(const float xFraction, const float yFraction) {
     const float posx[] = {-1.001f,
                           -1.0f + xFraction * 0.25f,
@@ -426,6 +429,24 @@ bool VrCinema::AppInit(const OVRFW::ovrAppContext* appContext) {
             }
         }
     }
+    // Add particle system to show end of beam
+    {
+        SpriteAtlas = new OVRFW::ovrTextureAtlas();
+        SpriteAtlas->Init(*FileSys, "apk:///assets/particles2.ktx");
+        SpriteAtlas->BuildSpritesFromGrid(4, 2, 8);
+
+        ParticleSystem = new OVRFW::ovrParticleSystem();
+        ParticleSystem->Init(2048, *SpriteAtlas, OVRFW::ovrParticleSystem::GetDefaultGpuState(), false);
+    }
+    // Add beam
+    {
+        RemoteBeamRenderer = new OVRFW::ovrBeamRenderer();
+        RemoteBeamRenderer->Init(256, true);
+
+        BeamAtlas = new OVRFW::ovrTextureAtlas();
+        BeamAtlas->Init(*FileSys, "apk:///assets/beams.ktx");
+        BeamAtlas->BuildSpritesFromGrid(2, 1, 2);
+    }
 
     /// Start movie on Java side
     StartStreaming();
@@ -433,6 +454,17 @@ bool VrCinema::AppInit(const OVRFW::ovrAppContext* appContext) {
     /// All done
     ALOGV("AppInit - exit");
     return true;
+}
+
+void VrCinema::ResetLaserPointer() {
+    if (LaserPointerBeamHandle.IsValid()) {
+        RemoteBeamRenderer->RemoveBeam(LaserPointerBeamHandle);
+        LaserPointerBeamHandle.Release();
+    }
+    if (LaserPointerParticleHandle.IsValid()) {
+        ParticleSystem->RemoveParticle(LaserPointerParticleHandle);
+        LaserPointerParticleHandle.Release();
+    }
 }
 
 void VrCinema::AppShutdown(const OVRFW::ovrAppContext*) {
@@ -464,6 +496,11 @@ void VrCinema::AppShutdown(const OVRFW::ovrAppContext*) {
         MipMappedMovieTextureSwapChainLength = 0;
     }
 
+    for (int i = InputDevices.size() - 1; i >= 0; --i) {
+        OnDeviceDisconnected(InputDevices[i]->GetDeviceID());
+    }
+    ResetLaserPointer();
+
     OVRFW::ovrFileSys::Destroy(FileSys);
     SurfaceRender.Shutdown();
 
@@ -479,7 +516,6 @@ void VrCinema::AppResumed(const OVRFW::ovrAppContext* /* context */) {
 void VrCinema::AppPaused(const OVRFW::ovrAppContext* /* context */) {
     ALOGV("VrCinema::AppPaused");
     if (RenderState == RENDER_STATE_RUNNING) {
-        ALOGV("RICKYXXX Pause 1");
         StopStreaming();
     }
 }
@@ -493,24 +529,25 @@ OVRFW::ovrApplFrameOut VrCinema::AppFrame(const OVRFW::ovrApplFrameIn& vrFrame) 
     Scene.Frame(vrFrame);
 
     /// Simple Play/Pause toggle
-    if (vrFrame.Clicked(ovrButton_A) || vrFrame.Clicked(ovrButton_Trigger)) {
-        if (IsPaused) {
-            ResumeStreaming();
-        } else {
-            ALOGV("RICKYXXX Pause 2");
-            StopStreaming();
-        }
-    }
+//    if (vrFrame.Clicked(ovrButton_A) || vrFrame.Clicked(ovrButton_Trigger)) {
+//        clicked = true;
+//        if (IsPaused) {
+//            ResumeStreaming();
+//        } else {
+//            ALOGV("RICKYXXX Pause 2");
+//            StopStreaming();
+//        }
+//    }
 
     // Check for mount/unmount
-    if (vrFrame.HeadsetUnMounted()) {
-        WasPausedOnUnMount = IsPaused;
-        ALOGV("RICKYXXX Pause 3");
-        StopStreaming();
-    }
-    if (vrFrame.HeadsetMounted() && false == WasPausedOnUnMount) {
-        ResumeStreaming();
-    }
+//    if (vrFrame.HeadsetUnMounted()) {
+//        WasPausedOnUnMount = IsPaused;
+//        ALOGV("RICKYXXX Pause 3");
+//        StopStreaming();
+//    }
+//    if (vrFrame.HeadsetMounted() && false == WasPausedOnUnMount) {
+//        ResumeStreaming();
+//    }
 
     return OVRFW::ovrApplFrameOut();
 }
@@ -523,7 +560,6 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
         case RENDER_STATE_RUNNING: {
             // latch the latest movie frame to the texture.
             if (MovieTexture != nullptr && CurrentMovieWidth != 0) {
-                ALOG("VrCinema:: MovieTexture 526");
                 glActiveTexture(GL_TEXTURE0);
                 MovieTexture->Update();
                 glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
@@ -624,6 +660,277 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
                 SuggestedEyeFovDegreesX, SuggestedEyeFovDegreesY, out.FrameMatrices);
             Scene.GenerateFrameSurfaceList(out.FrameMatrices, out.Surfaces);
 
+            // Controller logic
+            EnumerateInputDevices();
+            const ovrJava* java = reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi());
+            bool hasActiveController = false;
+            int iActiveInputDeviceID;
+            vrapi_GetPropertyInt(java, VRAPI_ACTIVE_INPUT_DEVICE_ID, &iActiveInputDeviceID);
+            uint32_t ActiveInputDeviceID = (uint32_t)iActiveInputDeviceID;
+
+            {
+                // for each device, query its current tracking state and input state
+                // it's possible for a device to be removed during this loop, so we go through it backwards
+                for (int i = (int) InputDevices.size() - 1; i >= 0; --i) {
+                    OVRFW::ovrInputDeviceBase *device = InputDevices[i];
+                    if (device == nullptr) {
+                        assert(false); // this should never happen!
+                        continue;
+                    }
+                    ovrDeviceID deviceID = device->GetDeviceID();
+                    if (deviceID == ovrDeviceIdType_Invalid) {
+                        assert(deviceID != ovrDeviceIdType_Invalid);
+                        continue;
+                    }
+                    if (device->GetType() == ovrControllerType_TrackedRemote) {
+                        OVRFW::ovrInputDevice_TrackedRemote &trDevice =
+                                *static_cast<OVRFW::ovrInputDevice_TrackedRemote *>(device);
+
+                        if (deviceID != ovrDeviceIdType_Invalid) {
+                            ovrTracking remoteTracking;
+                            ovrResult result = vrapi_GetInputTrackingState(
+                                    GetSessionObject(), deviceID, in.PredictedDisplayTime,
+                                    &remoteTracking);
+                            if (result != ovrSuccess) {
+                                OnDeviceDisconnected(deviceID);
+                                continue;
+                            }
+
+                            trDevice.SetTracking(remoteTracking);
+
+                            float yaw;
+                            float pitch;
+                            float roll;
+                            Quatf r(remoteTracking.HeadPose.Pose.Orientation);
+                            r.GetEulerAngles<OVR::Axis_Y, OVR::Axis_X, OVR::Axis_Z>(&yaw, &pitch, &roll);
+                            // ALOG( "MLBUPose", "Pose.r = ( %.2f, %.2f, %.2f, %.2f ), ypr( %.2f, %.2f, %.2f ),
+                            // t( %.2f, %.2f, %.2f )", 	r.x, r.y, r.z, r.w, 	MATH_FLOAT_RADTODEGREEFACTOR *
+                            // yaw,
+                            // MATH_FLOAT_RADTODEGREEFACTOR * pitch, MATH_FLOAT_RADTODEGREEFACTOR * roll,
+                            //	remoteTracking.HeadPose.Pose.Position.x,
+                            // remoteTracking.HeadPose.Pose.Position.y, remoteTracking.HeadPose.Pose.Position.z
+                            //);
+                            trDevice.IsActiveInputDevice = (trDevice.GetDeviceID() ==
+                                                            ActiveInputDeviceID);
+                            // result = PopulateRemoteControllerInfo(trDevice, recenteredController);
+                            // Port it
+                            {
+                                ovrDeviceID deviceID = trDevice.GetDeviceID();
+
+                                ovrInputStateTrackedRemote remoteInputState;
+                                remoteInputState.Header.ControllerType = trDevice.GetType();
+
+                                ovrResult result;
+                                result = vrapi_GetCurrentInputState(GetSessionObject(), deviceID, &remoteInputState.Header);
+
+                                if (result != ovrSuccess) {
+                                    ALOG("MLBUState - ERROR %i getting remote input state!", result);
+                                    OnDeviceDisconnected(deviceID);;
+                                }
+                            }
+
+                            if (result == ovrSuccess) {
+                                if (trDevice.IsActiveInputDevice) {
+                                    hasActiveController = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Beam!!!
+            bool hitScreen = false;
+            {
+                //------------------------------------------------------------------------------------------
+                // calculate the controller pose from the most recent scene pose
+                Vector3f pointerStart(0.0f);
+                Vector3f pointerEnd(0.0f);
+
+                // loop through all devices to update controller arm models and place the pointer for the
+                // dominant hand
+                Matrix4f traceMat(out.FrameMatrices.CenterView.Inverted());
+                for (int i = (int)InputDevices.size() - 1; i >= 0; --i) {
+                    OVRFW::ovrInputDeviceBase* device = InputDevices[i];
+                    if (device == nullptr) {
+                        assert(false); // this should never happen!
+                        continue;
+                    }
+                    ovrDeviceID deviceID = device->GetDeviceID();
+                    if (deviceID == ovrDeviceIdType_Invalid) {
+                        assert(deviceID != ovrDeviceIdType_Invalid);
+                        continue;
+                    }
+                    if (device->GetType() == ovrControllerType_TrackedRemote) {
+                        OVRFW::ovrInputDevice_TrackedRemote& trDevice =
+                                *static_cast<OVRFW::ovrInputDevice_TrackedRemote*>(device);
+
+                        const ovrTracking& tracking = trDevice.GetTracking();
+
+                        Matrix4f mat = Matrix4f(tracking.HeadPose.Pose);
+
+                        float controllerPitch = 0.0f;
+                        if (trDevice.GetTrackedRemoteCaps().ControllerCapabilities &
+                            ovrControllerCaps_ModelOculusTouch) {
+                            controllerPitch = OVR::DegreeToRad(-90.0f);
+                        }
+
+                        std::vector<OVRFW::ovrDrawSurface>& controllerSurfaces = trDevice.GetControllerSurfaces();
+                        const float controllerYaw = OVR::DegreeToRad(180.0f);
+                        for (uint32_t k = 0; k < controllerSurfaces.size(); k++) {
+                            controllerSurfaces[k].modelMatrix =
+                                    mat * Matrix4f::RotationY(controllerYaw) * Matrix4f::RotationX(controllerPitch);
+                        }
+
+                        trDevice.UpdateHaptics(GetSessionObject(), in);
+
+                        // only do the trace for the user's dominant hand
+                        bool updateLaser = trDevice.IsActiveInputDevice;
+
+                        if (updateLaser) {
+                            traceMat = mat;
+                            pointerStart = traceMat.Transform(Vector3f(0.0f)) + Scene.GetFootPos();
+                            pointerEnd = traceMat.Transform(Vector3f(0.0f, 0.0f, -10.0f)) + Scene.GetFootPos();
+
+                            Vector3f const pointerDir = (pointerEnd - pointerStart).Normalized();
+                            float r = (-pointerStart.z - 3.253125f)/pointerDir.z;
+                            if (r > 0) {
+                                pointerEnd = pointerStart + pointerDir * r;
+                                hitScreen = true;
+                            } else {
+                                pointerEnd = pointerStart + pointerDir * 10.0f;
+                                hitScreen = false;
+                            }
+
+                            int b = ovrButton_A | ovrButton_Trigger;
+                            const bool isDown = (b & in.AllButtons) != 0;
+                            const bool wasDown = (b & in.LastFrameAllButtons) != 0;
+                            if (hitScreen && (isDown || wasDown)) {
+                                int action = 0;
+                                if (isDown && !wasDown) {
+                                    // ACTION_DOWN
+                                    action = 3;
+                                } else if (isDown && wasDown) {
+                                    // ACTION_MOVE
+                                    action = 1;
+                                } else {
+                                    // ACTION_UP
+                                    action = 2;
+                                }
+                                float movieAspect = (CurrentMovieHeight == 0)
+                                                    ? 1.0f
+                                                    : ((float) CurrentMovieWidth /
+                                                       CurrentMovieHeight);
+                                float screenRatio = SceneScreenBounds.GetSize().x / SceneScreenBounds.GetSize().y;
+                                float screenWidth;
+                                float screenHeight;
+                                if (movieAspect > screenRatio) {
+                                    // Full width
+                                    screenWidth = SceneScreenBounds.GetSize().x;
+                                    screenHeight = screenWidth / movieAspect;
+                                } else {
+                                    // Full height
+                                    screenHeight = SceneScreenBounds.GetSize().y;
+                                    screenWidth = screenHeight * movieAspect;
+                                }
+                                float screenX = SceneScreenBounds.GetCenter().x - screenWidth / 2;
+                                float screenY = SceneScreenBounds.GetCenter().y - screenHeight / 2;
+                                float realTouchX = pointerEnd.x - screenX;
+                                float realTouchY = screenY + screenHeight - pointerEnd.y;
+                                float touchX = realTouchX / screenWidth * CurrentMovieWidth;
+                                float touchY = realTouchY / screenHeight * CurrentMovieHeight;
+
+                                struct timespec currentTime;
+                                clock_gettime(CLOCK_MONOTONIC, &currentTime);
+                                uint64_t currentTimeMs = currentTime.tv_sec * 1000 + currentTime.tv_nsec / 1000 / 1000;
+
+                                if (!(action == 1 && (currentTimeMs - LastTouchActionDownTimeMs) < 200)) {
+                                    OnTouchScreen(action, touchX, touchY);
+                                }
+                                if (action == 3) {
+                                    LastTouchActionDownTimeMs = currentTimeMs;
+                                }
+                                // ALOG("MLBULaser - RICKYXXX %f %f %f %f", widthScale, heightScale, screenWidth, screenHeight);
+                            }
+                        }
+                    }
+                }
+                //------------------------------------------------------------------------------------------
+
+                //------------------------------------------------------------------------------------------
+                // if there an active controller, draw the laser pointer at the dominant hand position
+                if (hasActiveController) {
+                    if (!LaserPointerBeamHandle.IsValid()) {
+                        LaserPointerBeamHandle = RemoteBeamRenderer->AddBeam(
+                                in,
+                                *BeamAtlas,
+                                0,
+                                0.032f,
+                                pointerStart,
+                                pointerEnd,
+                                LASER_COLOR,
+                                OVRFW::ovrBeamRenderer::LIFETIME_INFINITE);
+                        ALOG("MLBULaser - AddBeam %i", LaserPointerBeamHandle.Get());
+
+                        // Hide the gaze cursor when the remote laser pointer is active.
+                        //GuiSys->GetGazeCursor().HideCursor();
+                    } else {
+                        // RICKYXXX: RemoteBeamRenderer is the most important object to show the beam
+                        RemoteBeamRenderer->UpdateBeam(
+                                in,
+                                LaserPointerBeamHandle,
+                                *BeamAtlas,
+                                0,
+                                0.032f,
+                                pointerStart,
+                                pointerEnd,
+                                LASER_COLOR);
+                    }
+                } else {
+                    ResetLaserPointer();
+                }
+
+                if (!LaserPointerParticleHandle.IsValid()) {
+                    if (hitScreen) {
+                        LaserPointerParticleHandle = ParticleSystem->AddParticle(
+                                in,
+                                pointerEnd,
+                                0.0f,
+                                Vector3f(0.0f),
+                                Vector3f(0.0f),
+                                LASER_COLOR,
+                                OVRFW::ovrEaseFunc::NONE,
+                                0.0f,
+                                0.1f,
+                                0.1f,
+                                0);
+                        ALOG("MLBULaser - AddParticle %i", LaserPointerParticleHandle.Get());
+                    }
+                } else {
+                    if (hitScreen) {
+                        ParticleSystem->UpdateParticle(
+                                in,
+                                LaserPointerParticleHandle,
+                                pointerEnd,
+                                0.0f,
+                                Vector3f(0.0f),
+                                Vector3f(0.0f),
+                                LASER_COLOR,
+                                OVRFW::ovrEaseFunc::NONE,
+                                0.0f,
+                                0.1f,
+                                0.1f,
+                                0);
+                    } else {
+                        ParticleSystem->RemoveParticle(LaserPointerParticleHandle);
+                        LaserPointerParticleHandle.Release();
+                    }
+                }
+                // since we don't delete any lines, we don't need to run its frame at all
+                RemoteBeamRenderer->Frame(in, out.FrameMatrices.CenterView, *BeamAtlas);
+                ParticleSystem->Frame(in, *SpriteAtlas, out.FrameMatrices.CenterView);
+            }
+
             const bool drawScreen =
                 (SceneScreenSurface != NULL) && MovieTexture && (CurrentMovieWidth > 0);
 
@@ -669,6 +976,9 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
                         OVRFW::ovrDrawSurface(ScreenMatrix, &FadedScreenMaskSquareDef));
                 }
             }
+            const Matrix4f projectionMatrix;
+            ParticleSystem->RenderEyeView(out.FrameMatrices.CenterView, projectionMatrix, out.Surfaces);
+            RemoteBeamRenderer->RenderEyeView(out.FrameMatrices.CenterView, projectionMatrix, out.Surfaces);
 
             ovrLayerProjection2& worldLayer = out.Layers[out.NumLayers++].Projection;
             worldLayer = vrapi_DefaultLayerProjection2();
@@ -841,7 +1151,20 @@ Matrix4f VrCinema::BoundsScreenMatrix(const Bounds3f& bounds, const float movieA
         Matrix4f::Scaling(widthScale, heightScale, 1.0f);
 }
 
+void VrCinema::OnTouchScreen(int action, float x, float y) {
+    // TODO: Make it more efficient
+    const ovrJava& ctx = *(reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi()));
+    JNIEnv* env;
+    ctx.Vm->AttachCurrentThread(&env, 0);
+    jobject me = ctx.ActivityObject;
+    jclass acl = env->GetObjectClass(me); // class pointer of NativeActivity
+    jmethodID onTouchScreenMethodId = env->GetMethodID(acl, "onTouchScreen", "(IFF)V");
+    env->CallVoidMethod(ctx.ActivityObject, onTouchScreenMethodId, action, x, y);
+    env->DeleteLocalRef(acl);
+}
+
 void VrCinema::StartStreaming() {
+    // TODO: Make it more efficient
     const ovrJava& ctx = *(reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi()));
     JNIEnv* env;
     ctx.Vm->AttachCurrentThread(&env, 0);
@@ -849,11 +1172,11 @@ void VrCinema::StartStreaming() {
     jclass acl = env->GetObjectClass(me); // class pointer of NativeActivity
     jmethodID startMovieMethodId = env->GetMethodID(acl, "startStreaming", "()V");
     env->CallVoidMethod(ctx.ActivityObject, startMovieMethodId);
+    env->DeleteLocalRef(acl);
     IsPaused = false;
 }
 
 void VrCinema::StopStreaming() {
-    ALOGV("RICKYXXX Pause 4");
     const ovrJava& ctx = *(reinterpret_cast<const ovrJava*>(GetContext()->ContextForVrApi()));
     JNIEnv* env;
     ctx.Vm->AttachCurrentThread(&env, 0);
@@ -866,4 +1189,133 @@ void VrCinema::StopStreaming() {
 
 void VrCinema::ResumeStreaming() {
     StartStreaming();
+}
+
+//---------------------------------------------------------------------------------------------------
+// Input device management
+//---------------------------------------------------------------------------------------------------
+
+//==============================
+// ovrVrInput::FindInputDevice
+int VrCinema::FindInputDevice(const ovrDeviceID deviceID) const {
+    for (int i = 0; i < (int)InputDevices.size(); ++i) {
+        if (InputDevices[i]->GetDeviceID() == deviceID) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+//==============================
+// ovrVrInput::RemoveDevice
+void VrCinema::RemoveDevice(const ovrDeviceID deviceID) {
+    int index = FindInputDevice(deviceID);
+    if (index < 0) {
+        return;
+    }
+    OVRFW::ovrInputDeviceBase* device = InputDevices[index];
+    delete device;
+    InputDevices[index] = InputDevices.back();
+    InputDevices[InputDevices.size() - 1] = nullptr;
+    InputDevices.pop_back();
+}
+
+//==============================
+// ovrVrInput::IsDeviceTracked
+bool VrCinema::IsDeviceTracked(const ovrDeviceID deviceID) const {
+    return FindInputDevice(deviceID) >= 0;
+}
+
+//==============================
+// ovrVrInput::EnumerateInputDevices
+void VrCinema::EnumerateInputDevices() {
+    for (uint32_t deviceIndex = 0;; deviceIndex++) {
+        ovrInputCapabilityHeader curCaps;
+
+        if (vrapi_EnumerateInputDevices(GetSessionObject(), deviceIndex, &curCaps) < 0) {
+            // ALOG( "Input - No more devices!" );
+            break; // no more devices
+        }
+
+        if (!IsDeviceTracked(curCaps.DeviceID)) {
+            ALOG("Input -      tracked");
+            OnDeviceConnected(curCaps);
+        }
+    }
+}
+
+//==============================
+// ovrVrInput::OnDeviceConnected
+void VrCinema::OnDeviceConnected(const ovrInputCapabilityHeader& capsHeader) {
+    OVRFW::ovrInputDeviceBase* device = nullptr;
+    ovrResult result = ovrError_NotInitialized;
+    switch (capsHeader.Type) {
+        case ovrControllerType_TrackedRemote: {
+            ALOG("MLBUConnect - Controller connected, ID = %u", capsHeader.DeviceID);
+
+            ovrInputTrackedRemoteCapabilities remoteCapabilities;
+            remoteCapabilities.Header = capsHeader;
+            result =
+                    vrapi_GetInputDeviceCapabilities(GetSessionObject(), &remoteCapabilities.Header);
+            if (result == ovrSuccess) {
+                int tmp = 0;
+                OVRFW::OvrGuiSys* tmp2 = (OVRFW::OvrGuiSys*) &tmp;
+                device =
+                        OVRFW::ovrInputDevice_TrackedRemote::Create(*this, (OVRFW::OvrGuiSys&) *tmp2, (OVRFW::VRMenu&) *tmp2, remoteCapabilities);
+
+                // populate model surfaces.
+//                OVRFW::ovrInputDevice_TrackedRemote& trDevice =
+//                        *static_cast<OVRFW::ovrInputDevice_TrackedRemote*>(device);
+//                std::vector<OVRFW::ovrDrawSurface>& controllerSurfaces = trDevice.GetControllerSurfaces();
+//                OVRFW::ModelFile* modelFile = NULL;
+//                if (trDevice.GetTrackedRemoteCaps().ControllerCapabilities &
+//                    ovrControllerCaps_ModelOculusTouch) {
+//                    if (trDevice.GetHand() == OVRFW::ovrArmModel::HAND_LEFT) {
+//                        modelFile = ControllerModelOculusTouchLeft;
+//                    } else {
+//                        modelFile = ControllerModelOculusTouchRight;
+//                    }
+//                }
+//
+//                controllerSurfaces.clear();
+//                for (auto& model : modelFile->Models) {
+//                    OVRFW::ovrDrawSurface controllerSurface;
+//                    controllerSurface.surface = &(model.surfaces[0].surfaceDef);
+//                    controllerSurfaces.push_back(controllerSurface);
+//                }
+            }
+            break;
+        }
+
+        default:
+        ALOG("Unknown device connected!");
+            assert(false);
+            return;
+    }
+
+    if (result != ovrSuccess) {
+        ALOG("MLBUConnect - vrapi_GetInputDeviceCapabilities: Error %i", result);
+    }
+    if (device != nullptr) {
+        ALOG("MLBUConnect - Added device '%s', id = %u", device->GetName(), capsHeader.DeviceID);
+        InputDevices.push_back(device);
+    } else {
+        ALOG("MLBUConnect - Device creation failed for id = %u", capsHeader.DeviceID);
+    }
+}
+
+//==============================
+// ovrVrInput::OnDeviceDisconnected
+void VrCinema::OnDeviceDisconnected(const ovrDeviceID deviceID) {
+    ALOG("MLBUConnect - Controller disconnected, ID = %i", deviceID);
+    RemoveDevice(deviceID);
+}
+
+VrCinema::~VrCinema() {
+    delete RemoteBeamRenderer;
+    RemoteBeamRenderer = nullptr;
+    delete ParticleSystem;
+    ParticleSystem = nullptr;
+    delete SpriteAtlas;
+    SpriteAtlas = nullptr;
 }

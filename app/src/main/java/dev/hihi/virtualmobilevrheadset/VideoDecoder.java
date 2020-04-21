@@ -148,7 +148,7 @@ public class VideoDecoder {
         // result.setInteger("allow-frame-drop", 0);
 
         boolean isLandscapeVideo = width > height;
-        if (isLandscapeScreen != isLandscapeVideo) {
+        if (isLandscapeVideo && !isLandscapeScreen) {
             result.setInteger(MediaFormat.KEY_ROTATION, 90);
             mWidth = height;
             mHeight = width;
