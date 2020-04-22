@@ -1,5 +1,8 @@
 package dev.hihi.virtualmobilevrheadset;
 
+import android.content.Context;
+import android.net.nsd.NsdServiceInfo;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.Surface;
 
@@ -20,9 +23,42 @@ public class MirrorEngine {
     private MirrorClientInterface mVideoClient = null;
     private MirrorClientInterface mCommandClient = null;
 
+    private NsdHelper mNsdHelper = null;
+    private String mDiscoveredIp = null;
+
     public interface TouchSurfaceInterface {
         void attachCommandClient(MirrorClientInterface client);
         void removeCommandClient();
+    }
+
+    public void startDiscover(Context context, final Runnable runnable) {
+        synchronized (this) {
+            if (mNsdHelper == null) {
+                mNsdHelper = new NsdHelper(context, new Runnable() {
+                    @Override
+                    public void run() {
+                        updateDiscoveredIp();
+                        runnable.run();
+                    }
+                });
+            }
+        }
+        mNsdHelper.discoverServices();
+    }
+
+    public String getDiscoveredIp() {
+        return mDiscoveredIp;
+    }
+
+    public void updateDiscoveredIp() {
+        if (mNsdHelper == null) {
+            return;
+        }
+        NsdServiceInfo info = mNsdHelper.getChosenServiceInfo();
+        if (info == null) {
+            return;
+        }
+        mDiscoveredIp = info.getHost().getHostAddress();
     }
 
     public synchronized void startClient(final String ip, final boolean isLandscapeScreen,
@@ -74,10 +110,15 @@ public class MirrorEngine {
         return mIsRunning;
     }
 
-    private void startAudioMirror(final String ip) {
+    private void startAudioMirror(final String originalIp) {
         new Thread() {
             public void run() {
                 while (mIsRunning) {
+                    String ip = mDiscoveredIp != null ? mDiscoveredIp : originalIp;
+                    if (ip == null) {
+                        SystemClock.sleep(500);
+                        continue;
+                    }
                     mAudioClient = new Tcp("AudioClient", false);
                     mAudioDecoder = new AudioDecoder();
 
@@ -101,11 +142,16 @@ public class MirrorEngine {
         }.start();
     }
 
-    private void startVideoMirror(final String ip, final boolean isLandscapeScreen,
+    private void startVideoMirror(final String originalIp, final boolean isLandscapeScreen,
             final VideoDecoder.OnSizeChangeCallback onSizeChangeCallback, final Surface surface) {
         new Thread() {
             public void run() {
                 while (mIsRunning) {
+                    String ip = mDiscoveredIp != null ? mDiscoveredIp : originalIp;
+                    if (ip == null) {
+                        SystemClock.sleep(500);
+                        continue;
+                    }
                     mVideoClient = new Tcp("VideoClient", false);
                     mVideoDecoder = new VideoDecoder();
 
@@ -129,10 +175,15 @@ public class MirrorEngine {
         }.start();
     }
 
-    private void startCommandClient(final String ip, final TouchSurfaceInterface touchSurfaceInterface) {
+    private void startCommandClient(final String originalIp, final TouchSurfaceInterface touchSurfaceInterface) {
         new Thread() {
             public void run() {
                 while (mIsRunning) {
+                    String ip = mDiscoveredIp != null ? mDiscoveredIp : originalIp;
+                    if (ip == null) {
+                        SystemClock.sleep(500);
+                        continue;
+                    }
                     mCommandClient = new Tcp("CommandClient", false);
                     touchSurfaceInterface.attachCommandClient(mCommandClient);
                     mCommandClient.start(ip, COMMAND_PORT, null, null, false);

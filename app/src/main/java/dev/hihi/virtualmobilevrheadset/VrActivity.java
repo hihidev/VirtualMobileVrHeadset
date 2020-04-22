@@ -68,6 +68,15 @@ public class VrActivity extends android.app.NativeActivity {
 
     super.onCreate(savedInstanceState);
     appPtr = nativeSetAppInterface(this);
+    mMirrorEngine.startDiscover(this, new Runnable() {
+      @Override
+      public void run() {
+        final String host = mMirrorEngine.getDiscoveredIp();
+        Log.i(TAG, "getDiscoveredIp: " + host);
+        SharedPreferences sp = getSharedPreferences(PhoneActivity.SP_NAME, Context.MODE_PRIVATE);
+        sp.edit().putString(PhoneActivity.LAST_IP, host).apply();
+      }
+    });
   }
 
   @Override
@@ -109,9 +118,6 @@ public class VrActivity extends android.app.NativeActivity {
   private void tryStartStreaming() {
     SharedPreferences sp = getSharedPreferences(PhoneActivity.SP_NAME, Context.MODE_PRIVATE);
     String ip = sp.getString(PhoneActivity.LAST_IP, null);
-    if (TextUtils.isEmpty(ip)) {
-      return;
-    }
 
     SurfaceTexture surfaceTexture = movieTexture;
     if (surfaceTexture == null) {

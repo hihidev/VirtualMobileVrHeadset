@@ -525,6 +525,22 @@ OVRFW::ovrApplFrameOut VrCinema::AppFrame(const OVRFW::ovrApplFrameIn& vrFrame) 
     FreeMove = vrFrame.LeftRemoteTracked && (vrFrame.LeftRemote.Buttons & ovrButton_Trigger) != 0;
     Scene.SetFreeMove(FreeMove);
 
+    // Only allow to move forward and backward
+    float dy = 0;
+    if (vrFrame.LeftRemoteTracked) {
+        dy += vrFrame.LeftRemote.Joystick.y;
+    }
+    if (vrFrame.RightRemoteTracked) {
+        dy += vrFrame.RightRemote.Joystick.y;
+    }
+    Vector3f pos = Scene.GetFootPos();
+    pos.z -= dy * 0.04;
+    Scene.SetFootPos(pos);
+
+    ((OVRFW::ovrApplFrameIn*) &vrFrame)->LeftRemote.Joystick.x = 0;
+    ((OVRFW::ovrApplFrameIn*) &vrFrame)->RightRemote.Joystick.x = 0;
+    ((OVRFW::ovrApplFrameIn*) &vrFrame)->LeftRemote.Joystick.y = 0;
+    ((OVRFW::ovrApplFrameIn*) &vrFrame)->RightRemote.Joystick.y = 0;
     // Player movement
     Scene.Frame(vrFrame);
 
@@ -792,8 +808,9 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
                             pointerStart = traceMat.Transform(Vector3f(0.0f)) + Scene.GetFootPos();
                             pointerEnd = traceMat.Transform(Vector3f(0.0f, 0.0f, -10.0f)) + Scene.GetFootPos();
 
+//                            ALOG("MLBULaser - Scene.GetCenterEyeForward() %f %f %f %f", Scene., SceneScreenBounds.GetCenter().z);
                             Vector3f const pointerDir = (pointerEnd - pointerStart).Normalized();
-                            float r = (-pointerStart.z - 3.253125f)/pointerDir.z;
+                            float r = (-pointerStart.z + SceneScreenBounds.GetCenter().z)/pointerDir.z;
                             if (r > 0) {
                                 pointerEnd = pointerStart + pointerDir * r;
                                 hitScreen = true;
@@ -1074,7 +1091,7 @@ void VrCinema::CheckForbufferResize() {
         MovieTextureWidth,
         MovieTextureHeight,
         OVRFW::ComputeFullMipChainNumLevels(MovieTextureWidth, MovieTextureHeight),
-        3);
+        1 /** 3 */);
     MipMappedMovieTextureSwapChainLength =
         vrapi_GetTextureSwapChainLength(MipMappedMovieTextureSwapChain);
 

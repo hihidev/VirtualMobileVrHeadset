@@ -19,7 +19,7 @@ import android.widget.EditText;
 
 public class PhoneActivity extends Activity implements TextureView.SurfaceTextureListener {
 
-    private static final String TAG = "MainActivity";
+    private static final String TAG = "PhoneActivity";
     public static final String SP_NAME = "settings";
     public static final String LAST_IP = "last_ip";
 
@@ -58,6 +58,19 @@ public class PhoneActivity extends Activity implements TextureView.SurfaceTextur
         });
 
         restoreLastIp();
+        mMirrorEngine.startDiscover(this, new Runnable() {
+            @Override
+            public void run() {
+                final String host = mMirrorEngine.getDiscoveredIp();
+                Log.i(TAG, "getDiscoveredIp: " + host);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        ((EditText) findViewById(R.id.server_ip)).setText(host);
+                    }
+                });
+            }
+        });
     }
 
     private void tryStartStreaming() {
