@@ -1,0 +1,37 @@
+language: android
+jdk: oraclejdk8
+sudo: false
+
+os:
+  - linux
+addons:
+  apt_packages:
+    - pandoc
+    - python
+before_install:
+  - yes | sdkmanager --licenses
+install:
+  - echo y | sdkmanager "ndk-bundle"
+  - echo y | sdkmanager "cmake;3.6.4111459"
+  - echo y | sdkmanager "lldb;3.1"
+android:
+  components:
+  - platform-tools
+  - tools
+  - build-tools-29.0.3
+  - android-29
+before_script:
+- python setup_sdk.py  
+script:
+- "./gradlew clean build"
+- echo -e "\nandroid.useAndroidX=true" >> gradle.properties && ./gradlew assembleRelease
+before_install:
+- openssl aes-256-cbc -K $encrypted_7c0b538a9501_key -iv $encrypted_7c0b538a9501_iv
+  -in release.keystore.enc -out app/release.keystore -d
+deploy:
+  provider: releases
+  api_key:
+    secure: dAQ4EvVr5aZnOO7NrSPUPL8cULFcShL0ggKTy3I/0thwudyaHlxvuITonQ7w+Vp80GgyOooCeLjN+4yxaw+ADmGYfupVuOsCJbyet3YaBm8KPEDRLYYyCwj0AHkDPEdfoW44CL9U+6u7pECeiRB8lo1BWgbvgtMSfJVHptGSUaUnmpwg3uVNkk1VWtk1jaqzDTMviemM1n7IB2NOlTkIlA+z8c7e/wC1zgFQ4hAnMUXjZjS3ZfKn8hOe6guNpuUh3V9JmCcUBfcIpLi63oyK2Sq0gRCeN2pDAegGNFibXAkzP2JeonSfkmUD2Y3xa2XFJrUQADTGKry0qomf8zjZvktnahU3iPzqDHxNJHxIMUCAj1YJGQ05kNd/9Wlh2yFr0++WlGQ3MkISITryBYPyulvUHucrr6g62F/HDkhWlop2rmeP7zNmJqM5MJxyaFtjDcWg5xcKD/+7Mk6dFyM9DXCjFgAiq9wqLtt9EUGgtIeSczFZCScqW/gYG+DydNEZ+eHFxZfNOeexxNWHRP2eBCPwgD/IkDJqd0vSRvXHP+qYrtEY8ZhCxHr3FZCK66GfktlILhFhmu3Arx7TUXccFtfoXlKSJqZCZphMlISGY5XL2b1bCY/w926/nKUIP1+3j4hnGcphIotHCi1199OxpRYZN6dQBP/dULauxixCOLU=
+  file: app/build/outputs/apk/release/app-release.apk
+  on:
+    tags: true

@@ -86,3 +86,5 @@ lint/tmp/
 # lint/reports/
 
 ovr_sdk/
+ovr_sdk.zip
+gradle.properties
