@@ -827,12 +827,19 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
                                 if (isDown && !wasDown) {
                                     // ACTION_DOWN
                                     action = 3;
+                                    IsTouchMoving = true;
                                 } else if (isDown && wasDown) {
                                     // ACTION_MOVE
-                                    action = 1;
+                                    if (IsTouchMoving) {
+                                        action = 1;
+                                    } else {
+                                        action = 3;
+                                        IsTouchMoving = true;
+                                    }
                                 } else {
                                     // ACTION_UP
                                     action = 2;
+                                    IsTouchMoving = false;
                                 }
                                 float movieAspect = (CurrentMovieHeight == 0)
                                                     ? 1.0f
@@ -862,7 +869,7 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
                                 uint64_t currentTimeMs = currentTime.tv_sec * 1000 + currentTime.tv_nsec / 1000 / 1000;
 
                                 int timeAfterActionDown = currentTimeMs - LastTouchActionDownTimeMs;
-                                if (action == 1 && timeAfterActionDown < 200) {
+                                if (action == 1 && (timeAfterActionDown < 200 && abs(touchX - PrevActionDownX) < 20 && abs(touchY - PrevActionDownY) < 20)) {
                                     // nop, don't move touches
                                 } else if (action == 2 && timeAfterActionDown < 200) {
                                     // Click on previous action down point
@@ -1124,19 +1131,19 @@ GLuint VrCinema::BuildScreenVignetteTexture(const int horizontalTile) const {
     static const int height = 9 * scale;
     unsigned char* buffer = new unsigned char[width * height];
     memset(buffer, 255, sizeof(unsigned char) * width * height);
-    for (int i = 0; i < width; i++) {
-        buffer[i] = 0; // horizontal black top
-        buffer[width * height - 1 - i] = 0; // horizontal black bottom
-    }
-    for (int i = 0; i < height; i++) {
-        buffer[i * width] = 0; // vertical black left
-        buffer[i * width + width - 1] = 0; // vertical black right
-        if (horizontalTile == 2) // vertical black middle
-        {
-            buffer[i * width + width / 2 - 1] = 0;
-            buffer[i * width + width / 2] = 0;
-        }
-    }
+//    for (int i = 0; i < width; i++) {
+//        buffer[i] = 0; // horizontal black top
+//        buffer[width * height - 1 - i] = 0; // horizontal black bottom
+//    }
+//    for (int i = 0; i < height; i++) {
+//        buffer[i * width] = 0; // vertical black left
+//        buffer[i * width + width - 1] = 0; // vertical black right
+//        if (horizontalTile == 2) // vertical black middle
+//        {
+//            buffer[i * width + width / 2 - 1] = 0;
+//            buffer[i * width + width / 2] = 0;
+//        }
+//    }
     GLuint texId;
     glGenTextures(1, &texId);
     glBindTexture(GL_TEXTURE_2D, texId);

@@ -178,6 +178,8 @@ public class VrActivity extends android.app.NativeActivity {
 
       int realX = (int) (x);
       int realY = (int) (y);
+      realX = Math.max(0, realX);
+      realY = Math.max(0, realY);
 
       byte[] bytes = new byte[6];
       bytes[0] = COMMAND.GESTURE;

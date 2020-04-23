@@ -60,6 +60,7 @@ class VrCinema : public OVRFW::ovrAppl {
           LastTouchActionDownTimeMs(0),
           PrevActionDownX(0),
           PrevActionDownY(0),
+          IsTouchMoving(false),
 //          ControllerModelOculusTouchLeft(nullptr),
 //          ControllerModelOculusTouchRight(nullptr),
           IsPaused(true)
@@ -178,6 +179,7 @@ class VrCinema : public OVRFW::ovrAppl {
     uint64_t LastTouchActionDownTimeMs;
     float PrevActionDownX;
     float PrevActionDownY;
+    bool IsTouchMoving;
 
     bool IsPaused;
     //bool WasPausedOnUnMount;

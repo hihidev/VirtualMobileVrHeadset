@@ -114,9 +114,10 @@ public class VideoDecoder {
                         ByteBuffer codecBuffer = decoder.getInputBuffer(inIndex);
                         codecBuffer.clear();
                         codecBuffer.put(packet.bytes, 0, packet.size);
-                        // Somehow Quest uses BUFFER_FLAG_CODEC_CONFIG will have corrupted image?
-                        decoder.queueInputBuffer(inIndex, 0, packet.size, 0, firstFrame && !"Oculus".equals(
-                                Build.MANUFACTURER) ? MediaCodec.BUFFER_FLAG_CODEC_CONFIG : 0);
+                        // Somehow uses BUFFER_FLAG_CODEC_CONFIG will have corrupted image?
+                        //decoder.queueInputBuffer(inIndex, 0, packet.size, 0, firstFrame && !"Oculus".equals(
+                        //         Build.MANUFACTURER) ? MediaCodec.BUFFER_FLAG_CODEC_CONFIG : 0);
+                        decoder.queueInputBuffer(inIndex, 0, packet.size, 0, 0);
                         firstFrame = false;
                     }
                 } catch (Exception e) {
