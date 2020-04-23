@@ -8,6 +8,8 @@ addons:
   apt_packages:
     - pandoc
     - python
+before_install:
+  - yes | sdkmanager --licenses && yes | sdkmanager --update
 install:
   - echo y | sdkmanager "ndk-bundle"
   - echo y | sdkmanager "ndk;20.1.5948944"
