@@ -1,7 +1,9 @@
 package dev.hihi.virtualmobilevrheadset;
 
+import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.SystemClock;
 import android.util.Log;
@@ -19,6 +21,7 @@ public class AudioDecoder {
     private static final int SAMPLE_RATE = 44100; // Hz
     private static final int ENCODING = AudioFormat.ENCODING_PCM_16BIT;
     private static final int CHANNEL_MASK = AudioFormat.CHANNEL_IN_STEREO;
+    private static final int MAX_PACKETS_IN_BUF = 2;
 
     private boolean mIsRunning = false;
     private CountDownLatch mStoppingLock = new CountDownLatch(1);
@@ -29,6 +32,7 @@ public class AudioDecoder {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                AudioLatencyTuner tuner;
                 AudioTrack audioTrack = null;
                 try {
                     int bufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE,
@@ -49,10 +53,14 @@ public class AudioDecoder {
                             // .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                             .setBufferSizeInBytes(bufferSize)
                             .build();
+                    AudioManager audioManager =
+                            (AudioManager) MyApplication.getApplication().getSystemService(Context.AUDIO_SERVICE);
+                    String text = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
+                    int framesPerBlock = Integer.parseInt(text);
+                    tuner = new AudioLatencyTuner(audioTrack, framesPerBlock);
 
-
-                    audioTrack.play();
                     Log.i(TAG, "Audio streaming started");
+                    boolean init = true;
 
                     while (mIsRunning) {
                         Packet packet = client.getNextPacket();
@@ -60,8 +68,18 @@ public class AudioDecoder {
                         if (packet == null) {
                             SystemClock.sleep(1);
                             continue;
+                        } else {
+                            // Drop old packets if buf is full
+                            while (client.packetQueueSize() >= MAX_PACKETS_IN_BUF) {
+                                packet = client.getNextPacket();
+                            }
                         }
                         audioTrack.write(packet.bytes, 0, packet.size, AudioTrack.WRITE_BLOCKING);
+                        if (init) {
+                            audioTrack.play();
+                            init = false;
+                        }
+                        tuner.update();
                         if (DEBUG && (SystemClock.uptimeMillis() - mLastDebugMessageTime) > DEBUG_MESSAGE_INTERVAL_MS) {
                             mLastDebugMessageTime = SystemClock.uptimeMillis();
                             Log.v(TAG, "Wrote size:" + packet.size);
