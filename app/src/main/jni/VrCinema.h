@@ -58,6 +58,8 @@ class VrCinema : public OVRFW::ovrAppl {
           LaserPointerParticleHandle(),
           ParticleSystem(nullptr),
           LastTouchActionDownTimeMs(0),
+          PrevActionDownX(0),
+          PrevActionDownY(0),
 //          ControllerModelOculusTouchLeft(nullptr),
 //          ControllerModelOculusTouchRight(nullptr),
           IsPaused(true)
@@ -174,6 +176,8 @@ class VrCinema : public OVRFW::ovrAppl {
 //    OVRFW::ModelFile* ControllerModelOculusTouchLeft;
 //    OVRFW::ModelFile* ControllerModelOculusTouchRight;
     uint64_t LastTouchActionDownTimeMs;
+    float PrevActionDownX;
+    float PrevActionDownY;
 
     bool IsPaused;
     //bool WasPausedOnUnMount;

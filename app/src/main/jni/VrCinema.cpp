@@ -861,11 +861,19 @@ void VrCinema::AppRenderFrame(const OVRFW::ovrApplFrameIn& in, OVRFW::ovrRendere
                                 clock_gettime(CLOCK_MONOTONIC, &currentTime);
                                 uint64_t currentTimeMs = currentTime.tv_sec * 1000 + currentTime.tv_nsec / 1000 / 1000;
 
-                                if (!(action == 1 && (currentTimeMs - LastTouchActionDownTimeMs) < 200)) {
+                                int timeAfterActionDown = currentTimeMs - LastTouchActionDownTimeMs;
+                                if (action == 1 && timeAfterActionDown < 200) {
+                                    // nop, don't move touches
+                                } else if (action == 2 && timeAfterActionDown < 200) {
+                                    // Click on previous action down point
+                                    OnTouchScreen(action, PrevActionDownX, PrevActionDownY);
+                                } else {
                                     OnTouchScreen(action, touchX, touchY);
                                 }
                                 if (action == 3) {
                                     LastTouchActionDownTimeMs = currentTimeMs;
+                                    PrevActionDownX = touchX;
+                                    PrevActionDownY = touchY;
                                 }
                                 // ALOG("MLBULaser - RICKYXXX %f %f %f %f", widthScale, heightScale, screenWidth, screenHeight);
                             }
